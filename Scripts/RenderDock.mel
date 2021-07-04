@@ -1,0 +1,529 @@
+global proc OpenRenderDock()
+{
+    global string $renWindow;
+    global string $renDocker;
+    global string $renScroll;
+    global string $renColumn;
+    global string $renderPath;
+    global string $renderPathBtn;
+    global string $renderName;
+    global string $renderNameField;
+    
+    global string $depthMinDis;
+    global string $depthMaxDis;
+    global string $aoAmount;
+    global string $aoRadius;
+    
+    if(`dockControl -ex "renDocker"`)
+    {
+        deleteUI $renColumn;
+    }
+    else
+    {
+        $renWindow = `window`;
+        $renScroll = `scrollLayout -horizontalScrollBarThickness 16 -verticalScrollBarThickness 16 -cr true`; 
+        $renDocker = `dockControl -ret false -area "left" -content $renWindow	-label "RenderDock" -allowedArea "all" renDocker`; 
+    }   
+    
+    string $sn = `file -q -sn -shn`;
+    $renderName = substring($sn, 1, size($sn) - 3);        
+    $renColumn = `columnLayout -parent $renScroll -columnAttach "both" 5 -rowSpacing 3 -columnWidth 450 -adj true`; 
+    scriptJob -parent $renScroll -e "SceneOpened" "OpenRenderDock";
+    
+    string $ViewportUI = `button -label "Viewport Options" -command "createViewport20OptionsUI" -bgc 0.5 0.5 0.5`;
+    
+    separator -h 20;    
+    global string $allCamera;
+    $allCamera = `optionMenu -changeCommand "changeCamera" -l "Render Cam : "`;
+    string $cameras[] = `ls -cameras`;
+    $cameras = `sort $cameras`;
+    for($item in $cameras)
+    {
+       menuItem -label $item;
+    }    
+    
+    separator -h 20;
+    text -label "-------- Render Directory --------" -align "center";
+    $renderPathBtn = `button -label "Set Directory" -command "SetRenderFolder"`;
+    
+    separator -h 20;
+    text -l "-------- Prefix Name --------" -align "center";
+    $renderNameField = `textField -tx $renderName -cc "RenderNameChanged"`;
+    
+    separator -h 20;
+    global string $resDropDown;
+    $resDropDown = `optionMenu -l "Resolution : "`;
+    menuItem -label "3840 X 2160";
+    menuItem -label "1920 X 1080";  
+    
+    separator -h 20;
+    string $changeToRealtimeRender = `button -label "Setup Realtime Rendering" -command "autoSetRealtimeRendering" -bgc 0.1 0.4 0.1`;
+    
+    separator -h 20;
+    text -l "Turn on smooth preview for neccesary mesh" -align "center";
+    button -label "Start Beauty Pass" -command "StartBeautyPassRendering" -bgc 0.9 0.6 0;
+    
+    separator -h 20;
+    text -l "Turn on smooth preview for neccesary mesh" -align "center";
+    button -label "Start FlatColor Pass" -command "StartFlatPassRendering" -bgc 1 1 0.5;
+    
+    separator -h 20;
+    text -l "Hide Obstructing transparent meshs" -align "center";
+    button -label "Start Shadow Pass" -command "StartShadowPassRendering" -bgc 0.1 0.1 0.5;
+    
+    separator -h 20;
+    text -l "Hide Obstructing transparent meshs" -align "center";
+    button -label "Start Normal Pass" -command "StartNormalPassRendering" -bgc 0.5 1 1;
+    
+    separator -h 20;
+    text -l "Hide Obstructing transparent meshs" -align "center";
+    button -label "Setup Depth Pass" -command "SetupDepthPassRendering" -bgc 0.2 0.4 0.4;
+    rowLayout -p $renColumn -nc 4;
+    text -l "Start : ";
+    $depthMinDis = `floatField -minValue 0 -maxValue 1000000 -step 1 -value 0 -cc "FloatFieldChanged 1"`;
+    text -l "End : ";
+    $depthMaxDis = `floatField -minValue 0 -maxValue 1000000 -step 1 -value 500 -cc "FloatFieldChanged 2"`;
+    button -p $renColumn -label "Start Depth Pass" -command "StartDepthPassRendering" -bgc 0.1 0.3 0.3;
+    setAttr "hardwareRenderingGlobals.hwFogStart" 0;
+    setAttr "hardwareRenderingGlobals.hwFogEnd" 500;
+
+    
+    
+    separator -p $renColumn -h 20;
+    text -p $renColumn -l "Hide Obstructing transparent meshs \n & \n Fix negative scaled meshes" -align "center";
+    button -p $renColumn -label "Setup AO Pass" -command "SetupAOPassRendering" -bgc 0.2 0.2 0.2;
+    rowLayout -p $renColumn -nc 4;
+    text -l "Amount : ";
+    $aoAmount = `floatField -minValue 0 -maxValue 3 -step 0.1 -value 1 -cc "FloatFieldChanged 3"`;
+    text -l "Radius : ";
+    $aoRadius = `floatField -minValue 1 -maxValue 64 -step 0.3 -value 16 -cc "FloatFieldChanged 4"`;
+    button -p $renColumn -label "Start AO Pass" -command "StartAOPassRendering" -bgc 0.1 0.1 0.1;
+    setAttr "hardwareRenderingGlobals.ssaoAmount" 1;
+    setAttr "hardwareRenderingGlobals.ssaoRadius" 16;
+    
+    //initialise camera
+    for($cam in `ls -cameras`)
+    {
+        string $tmp = $cam;
+        string $check = `match "shot" $tmp`;
+        if($check == "")
+        {
+            setAttr ($cam + ".renderable") 0;
+        }
+        else
+        {
+            setAttr ($cam + ".renderable") 1;
+            optionMenu -edit -value $cam $allCamera;
+        }
+    }
+}
+OpenRenderDock();
+
+global proc FloatFieldChanged(int $case)
+{
+    global string $depthMinDis;
+    global string $depthMaxDis;
+    global string $aoAmount;
+    global string $aoRadius;
+    
+    if($case == 1)
+    {
+        $tmp = `floatField -q -value $depthMinDis`;
+        setAttr "hardwareRenderingGlobals.hwFogStart" $tmp;
+    }
+    if($case == 2)
+    {
+        $tmp = `floatField -q -value $depthMaxDis`;
+        setAttr "hardwareRenderingGlobals.hwFogEnd" $tmp;
+    }
+    if($case == 3)
+    {
+        $tmp = `floatField -q -value $aoAmount`;
+        setAttr "hardwareRenderingGlobals.ssaoAmount" $tmp;
+    }
+    if($case == 4)
+    {
+        $tmp = `floatField -q -value $aoRadius`;
+        setAttr "hardwareRenderingGlobals.ssaoRadius" $tmp;
+    }
+}
+
+global proc changeCamera()
+{
+    global string $allCamera;
+    string $rendercam = `optionMenu -query -value $allCamera`;
+    for($cam in `ls -cameras`)
+    {
+		setAttr ($cam + ".renderable") 0;
+    }
+    setAttr ($rendercam + ".renderable") 1;    
+}
+
+global proc SetRenderFolder()
+{
+    global string $renderPath;
+    global string $renderPathBtn;
+    $paths = `fileDialog2 -fm 3 -ds 2 -okc "Set Render Directory"`;
+    $renderPath = $paths[0];
+    print $renderPath;
+    button -e -l $renderPath $renderPathBtn;
+}
+
+global proc RenderNameChanged()
+{
+    global string $renderName;
+    global string $renderNameField;
+    $renderName = `textField -q -tx $renderNameField`;
+}
+
+global proc autoSetRealtimeRendering()
+{
+    generateAllUvTilePreviews;
+    float $minTime = `playbackOptions -q -minTime`;
+    float $maxTime = `playbackOptions -q -maxTime`;    
+    setCurrentRenderer "mayaHardware2";
+    setAttr hardwareRenderingGlobals.renderMode 4 ; //Shaded and Textured
+    setAttr "hardwareRenderingGlobals.lightingMode" 1; //full ambient
+    colorManagementPrefs -edit -ote true;//Apply output transform to renderer
+    setAttr "defaultRenderGlobals.imageFormat" 32;//PNG
+    setAttr "defaultRenderGlobals.startFrame" $minTime;//Based on start of active timeline
+    setAttr "defaultRenderGlobals.endFrame" $maxTime;//Based on end of active timeline
+    setAttr "defaultRenderGlobals.byFrameStep" 1;
+    global string $resDropDown;
+    string $renderRes = `optionMenu -query -value $resDropDown`;
+    if($renderRes == "3840 X 2160")
+    {
+        setAttr defaultResolution.width 3840;//Width of render output
+        setAttr defaultResolution.height 2160;//Height of render output
+    }
+    else
+    {
+        setAttr defaultResolution.width 1920;//Width of render output
+        setAttr defaultResolution.height 1080;//Height of render output
+    }
+    setAttr defaultRenderGlobals.outFormatControl 0;
+    setAttr defaultRenderGlobals.animation 1;//Enable frame range rendering
+    setAttr defaultRenderGlobals.putFrameBeforeExt 1;//name.#.ext
+    setAttr defaultRenderGlobals.periodInExt 1;//name.#.ext
+    setAttr defaultRenderGlobals.extensionPadding 4;//Extension padding  
+    setAttr "hardwareRenderingGlobals.transparencyAlgorithm" 1;//Transparency algorithm
+    setAttr "hardwareRenderingGlobals.lineAAEnable" 0;//Disable smooth wireframe  
+    setAttr "hardwareRenderingGlobals.multiSampleEnable" 0;//Disable antialiasing
+    setAttr "hardwareRenderingGlobals.renderDepthOfField" 0;//Disable depth of field  
+    setAttr "hardwareRenderingGlobals.motionBlurEnable" 0;//Disable motion blur  
+    setAttr "hardwareRenderingGlobals.hwFogEnable" 0;//enable hardwarefog
+    setAttr "hardwareRenderingGlobals.ssaoEnable" 0;//enable screen space ambient occlusion
+    ViewportFogViz(0);
+    //Get and Set Renderable camera
+    global string $allCamera;
+    string $rendercam = `optionMenu -query -value $allCamera`;
+    for($cam in `ls -cameras`)
+    {
+		setAttr ($cam + ".renderable") 0;
+    }
+    setAttr ($rendercam + ".renderable") 1;
+    
+    string $dirPath = `whatIs "OpenRenderDock"`;
+    $dirPath = `substring $dirPath 25 (size($dirPath))`;
+    $dirPath = dirname(dirname($dirPath));
+    $importPath = $dirPath + "/Shaders/AllShaders.mb";
+    print "\n";print $importPath;
+    
+    file -import -type "mayaBinary"  -ignoreVersion -ra true -mergeNamespacesOnClash false -namespace "AllShaders" -options "v=0;"  -pr  -importFrameRate true  -importTimeRange "override" $importPath;
+    requires "stereoCamera" "10.0";
+    namespace -mergeNamespaceWithRoot -removeNamespace ":AllShaders";
+}
+
+proc string formatDigits(int $number, int $startNumber, int $finalNumber){
+    // Format $number to the right amount of digits
+    // Add the right amount of zeros to match max(abs($finalNumber), abs($startNumber)) number of digits
+    // If the $startNumber is negative, add a minus if $number is negative and a zero
+    // if $number is positive.
+    int $numOfDigits = 0;
+    int $maxNumOfDigits = 0;
+    if($number != 0){
+        $numOfDigits = log10(abs($number));
+    }
+    if($finalNumber != 0 || $startNumber < $finalNumber){
+        $maxNumOfDigits = log10(max(abs($finalNumber), abs($startNumber)));
+    }
+    string $res = "";
+    for($i=0; $i < $maxNumOfDigits - $numOfDigits; $i++){
+        $res += "0";
+    }
+    // Handle negatives frames
+    if($startNumber < 0){
+        if($number < 0){
+            $res = "-" + $res;
+        } else {
+            $res += "0";
+        }
+    }
+    return $res+abs($number);
+}
+
+global proc StartBeautyPassRendering()
+{
+    //string $currRenderer = currentRenderer();
+	//string $seqRenderCmd = `renderer -query -renderSequenceProcedure $currRenderer`;
+    //string $renderCmd = `renderer -query -renderProcedure $currRenderer`;    
+    //workspace -fr "images" "c:/Users/vivek/Desktop";
+    //workspace -saveWorkspace ;
+    
+    
+    setAttr hardwareRenderingGlobals.renderMode 4 ; //Shaded and Textured
+    setAttr "hardwareRenderingGlobals.lightingMode" 1; //All
+    setAttr "hardwareRenderingGlobals.lineAAEnable" 0;//Disable smooth wireframe  
+    setAttr "hardwareRenderingGlobals.multiSampleEnable" 0;//Disable antialiasing
+    setAttr "hardwareRenderingGlobals.renderDepthOfField" 0;//Disable depth of field  
+    setAttr "hardwareRenderingGlobals.motionBlurEnable" 0;//Disable motion blur  
+    setAttr "hardwareRenderingGlobals.hwFogEnable" 0;//enable hardwarefog
+    setAttr "hardwareRenderingGlobals.ssaoEnable" 0;//enable screen space ambient occlusion
+    
+    
+    global string $renderPath;
+    global string $renderName;
+    float $minTime = `playbackOptions -q -minTime`;
+    float $maxTime = `playbackOptions -q -maxTime`;    
+    float $frame;
+    
+    $window = `window -title "Status" -widthHeight 200 85 -mnb 0 -mxb 0 -tlb 1 -bgc 0 0 1`;
+    columnLayout -adjustableColumn true;
+    separator -h 20;
+    text -l "Beauty Pass InProgress" -fn "boldLabelFont" -bgc 1 1 0.5 -h 30;
+    separator -h 20;
+    showWindow $window;
+    
+    for($frame = $minTime; $frame <= ($maxTime+0.1); $frame++)
+    {
+        string $renderedImagePath = `ogsRender -f $frame`;
+        string $moveToPath = ($renderPath + "/" + $renderName + "/Beauty/" + $renderName + "_Beauty."+ formatDigits($frame,$minTime,$maxTime) + ".png");
+        sysFile -md (dirname($moveToPath));
+        sysFile -mov $moveToPath $renderedImagePath;
+    }
+    deleteUI $window;
+}
+
+global proc StartFlatPassRendering()
+{
+    setAttr hardwareRenderingGlobals.renderMode 4 ; //Shaded and Textured
+    setAttr "hardwareRenderingGlobals.lightingMode" 4; //full ambient 
+    setAttr "hardwareRenderingGlobals.lineAAEnable" 0;//Disable smooth wireframe  
+    setAttr "hardwareRenderingGlobals.multiSampleEnable" 0;//Disable antialiasing
+    setAttr "hardwareRenderingGlobals.renderDepthOfField" 0;//Disable depth of field  
+    setAttr "hardwareRenderingGlobals.motionBlurEnable" 0;//Disable motion blur  
+    setAttr "hardwareRenderingGlobals.hwFogEnable" 0;//enable hardwarefog
+    setAttr "hardwareRenderingGlobals.ssaoEnable" 0;//enable screen space ambient occlusion
+    
+    global string $renderPath;
+    global string $renderName;
+    float $minTime = `playbackOptions -q -minTime`;
+    float $maxTime = `playbackOptions -q -maxTime`;    
+    float $frame;
+    
+    $window = `window -title "Status" -widthHeight 200 85 -mnb 0 -mxb 0 -tlb 1 -bgc 0 0 1`;
+    columnLayout -adjustableColumn true;
+    separator -h 20;
+    text -l "Flat Pass InProgress" -fn "boldLabelFont" -bgc 1 1 0.5 -h 30;
+    separator -h 20;
+    showWindow $window;
+    
+    for($frame = $minTime; $frame <= ($maxTime+0.1); $frame++)
+    {
+        string $renderedImagePath = `ogsRender -f $frame`;
+        string $moveToPath = ($renderPath + "/" + $renderName + "/Flat/" + $renderName + "_Flat."+ formatDigits($frame,$minTime,$maxTime) + ".png");
+        sysFile -md (dirname($moveToPath));
+        sysFile -mov $moveToPath $renderedImagePath;
+    }
+    deleteUI $window;
+}
+
+global proc StartShadowPassRendering()
+{    
+    setAttr hardwareRenderingGlobals.renderMode 4 ; //Shaded and Textured
+    setAttr "hardwareRenderingGlobals.lightingMode" 1; //All 
+    setAttr "hardwareRenderingGlobals.lineAAEnable" 0;//Disable smooth wireframe  
+    setAttr "hardwareRenderingGlobals.multiSampleEnable" 0;//Disable antialiasing
+    setAttr "hardwareRenderingGlobals.renderDepthOfField" 0;//Disable depth of field  
+    setAttr "hardwareRenderingGlobals.motionBlurEnable" 0;//Disable motion blur  
+    setAttr "hardwareRenderingGlobals.hwFogEnable" 0;//enable hardwarefog
+    setAttr "hardwareRenderingGlobals.ssaoEnable" 0;//enable screen space ambient occlusion
+    
+    string $selectA[] = `ls -typ mesh`;
+    select $selectA;
+    hyperShade -assign "ShadowShader";
+    select -cl;
+
+    setAttr "hardwareRenderingGlobals.lightingMode" 1; //All
+    
+    global string $renderPath;
+    global string $renderName;
+    float $minTime = `playbackOptions -q -minTime`;
+    float $maxTime = `playbackOptions -q -maxTime`;    
+    float $frame;
+    
+    $window = `window -title "Status" -widthHeight 200 85 -mnb 0 -mxb 0 -tlb 1 -bgc 0 0 1`;
+    columnLayout -adjustableColumn true;
+    separator -h 20;
+    text -l "Shadow Pass InProgress" -fn "boldLabelFont" -bgc 1 1 0.5 -h 30;
+    separator -h 20;
+    showWindow $window;
+    
+    for($frame = $minTime; $frame <= ($maxTime+0.1); $frame++)
+    {
+        string $renderedImagePath = `ogsRender -f $frame`;
+        string $moveToPath = ($renderPath + "/" + $renderName + "/Shadow/" + $renderName + "_Shadow."+ formatDigits($frame,$minTime,$maxTime) + ".png");
+        sysFile -md (dirname($moveToPath));
+        sysFile -mov $moveToPath $renderedImagePath;
+    }
+    deleteUI $window;
+}
+
+global proc StartNormalPassRendering()
+{    
+
+    setAttr hardwareRenderingGlobals.renderMode 4 ; //Shaded and Textured
+    setAttr "hardwareRenderingGlobals.lightingMode" 4; //Full Ambient 
+    setAttr "hardwareRenderingGlobals.lineAAEnable" 0;//Disable smooth wireframe  
+    setAttr "hardwareRenderingGlobals.multiSampleEnable" 0;//Disable antialiasing
+    setAttr "hardwareRenderingGlobals.renderDepthOfField" 0;//Disable depth of field  
+    setAttr "hardwareRenderingGlobals.motionBlurEnable" 0;//Disable motion blur  
+    setAttr "hardwareRenderingGlobals.hwFogEnable" 0;//enable hardwarefog
+    setAttr "hardwareRenderingGlobals.ssaoEnable" 0;//enable screen space ambient occlusion
+    
+    string $selectA[] = `ls -typ mesh`;
+    select $selectA;
+    hyperShade -assign "NormalShader";
+    select -cl;
+
+    setAttr "hardwareRenderingGlobals.lightingMode" 1; //All
+    
+    global string $renderPath;
+    global string $renderName;
+    float $minTime = `playbackOptions -q -minTime`;
+    float $maxTime = `playbackOptions -q -maxTime`;    
+    float $frame;
+    
+    $window = `window -title "Status" -widthHeight 200 85 -mnb 0 -mxb 0 -tlb 1 -bgc 0 0 1`;
+    columnLayout -adjustableColumn true;
+    separator -h 20;
+    text -l "Normal Pass InProgress" -fn "boldLabelFont" -bgc 1 1 0.5 -h 30;
+    separator -h 20;
+    showWindow $window;
+    
+    for($frame = $minTime; $frame <= ($maxTime+0.1); $frame++)
+    {
+        string $renderedImagePath = `ogsRender -f $frame`;
+        string $moveToPath = ($renderPath + "/" + $renderName + "/Normal/" + $renderName + "_Normal."+ formatDigits($frame,$minTime,$maxTime) + ".png");
+        sysFile -md (dirname($moveToPath));
+        sysFile -mov $moveToPath $renderedImagePath;
+    }
+    deleteUI $window;
+}
+
+global proc SetupDepthPassRendering()
+{        
+    setAttr hardwareRenderingGlobals.renderMode 4 ; //Shaded and Textured
+    setAttr "hardwareRenderingGlobals.lightingMode" 4; //Full Ambient 
+    setAttr "hardwareRenderingGlobals.lineAAEnable" 0;//Disable smooth wireframe  
+    setAttr "hardwareRenderingGlobals.multiSampleEnable" 0;//Disable antialiasing
+    setAttr "hardwareRenderingGlobals.renderDepthOfField" 0;//Disable depth of field  
+    setAttr "hardwareRenderingGlobals.motionBlurEnable" 0;//Disable motion blur  
+    setAttr "hardwareRenderingGlobals.hwFogEnable" 1;//enable hardwarefog
+    setAttr "hardwareRenderingGlobals.ssaoEnable" 0;//enable screen space ambient occlusion
+    
+    setAttr "hardwareRenderingGlobals.hwFogFalloff" 0;
+    setAttr "hardwareRenderingGlobals.hwFogAlpha" 1;
+    setAttr "hardwareRenderingGlobals.hwFogColor" 0 0 0;
+    
+    string $selectA[] = `ls -typ mesh`;
+    select $selectA;
+    hyperShade -assign "FlatWhiteShader";
+    select -cl;
+    ViewportFogViz(1);
+}
+
+global proc StartDepthPassRendering()
+{    
+    
+    global string $renderPath;
+    global string $renderName;
+    float $minTime = `playbackOptions -q -minTime`;
+    float $maxTime = `playbackOptions -q -maxTime`;    
+    float $frame;
+    
+    $window = `window -title "Status" -widthHeight 200 85 -mnb 0 -mxb 0 -tlb 1 -bgc 0 0 1`;
+    columnLayout -adjustableColumn true;
+    separator -h 20;
+    text -l "Depth Pass InProgress" -fn "boldLabelFont" -bgc 1 1 0.5 -h 30;
+    separator -h 20;
+    showWindow $window;
+    
+    for($frame = $minTime; $frame <= ($maxTime+0.1); $frame++)
+    {
+        string $renderedImagePath = `ogsRender -f $frame`;
+        string $moveToPath = ($renderPath + "/" + $renderName + "/Depth/" + $renderName + "_Depth."+ formatDigits($frame,$minTime,$maxTime) + ".png");
+        sysFile -md (dirname($moveToPath));
+        sysFile -mov $moveToPath $renderedImagePath;
+    }
+    deleteUI $window;
+    
+    ViewportFogViz(0);
+}
+
+
+global proc SetupAOPassRendering()
+{    
+    
+    ViewportFogViz(0);
+    setAttr hardwareRenderingGlobals.renderMode 4 ; //Shaded and Textured
+    setAttr "hardwareRenderingGlobals.lightingMode" 4; //Full Ambient 
+    setAttr "hardwareRenderingGlobals.lineAAEnable" 0;//Disable smooth wireframe  
+    setAttr "hardwareRenderingGlobals.multiSampleEnable" 0;//Disable antialiasing
+    setAttr "hardwareRenderingGlobals.renderDepthOfField" 0;//Disable depth of field  
+    setAttr "hardwareRenderingGlobals.motionBlurEnable" 0;//Disable motion blur  
+    setAttr "hardwareRenderingGlobals.hwFogEnable" 0;//enable hardwarefog
+    setAttr "hardwareRenderingGlobals.ssaoEnable" 1;//enable screen space ambient occlusion
+    
+    setAttr "hardwareRenderingGlobals.ssaoFilterRadius" 16;
+    setAttr "hardwareRenderingGlobals.ssaoSamples" 16;
+
+    string $selectA[] = `ls -typ mesh`;
+    select $selectA;
+    hyperShade -assign "FlatWhiteShader";
+    select -cl;
+}
+
+global proc StartAOPassRendering()
+{    
+    
+    global string $renderPath;
+    global string $renderName;
+    float $minTime = `playbackOptions -q -minTime`;
+    float $maxTime = `playbackOptions -q -maxTime`;    
+    float $frame;
+    
+    $window = `window -title "Status" -widthHeight 200 85 -mnb 0 -mxb 0 -tlb 1 -bgc 0 0 1`;
+    columnLayout -adjustableColumn true;
+    separator -h 20;
+    text -l "AO Pass InProgress" -fn "boldLabelFont" -bgc 1 1 0.5 -h 30;
+    separator -h 20;
+    showWindow $window;
+    
+    for($frame = $minTime; $frame <= ($maxTime+0.1); $frame++)
+    {
+        string $renderedImagePath = `ogsRender -f $frame`;
+        string $moveToPath = ($renderPath + "/" + $renderName + "/AO/" + $renderName + "_AO."+ formatDigits($frame,$minTime,$maxTime) + ".png");
+        sysFile -md (dirname($moveToPath));
+        sysFile -mov $moveToPath $renderedImagePath;
+    }
+    deleteUI $window;
+}
+
+global proc ViewportFogViz(int $vis){
+    string $listPanel[];
+    for( $panelName in `getPanel -type modelPanel`)
+    {        
+        modelEditor -e -fogging $vis $panelName;
+    }
+}

@@ -1,0 +1,525 @@
+global proc OpenBatchRender()
+{
+    global string $batRenWindow;
+    global string $batRenDocker;
+    global string $batRenScroll;
+    global string $batRenColumn;
+    global string $renderInputPath;
+    global string $renderInputPathBtn;
+    global string $renderOutputPath;
+    global string $renderOutputPathBtn;
+    global string $camKeyNameField;
+    global string $renFormatDropDown;
+    global string $renResDropDown;
+    global string $waitTimeDropDown;
+    global string $settingsFromBox;
+    global string $renLogScroll;
+    global string $renLogColumn;
+    global string $gMainProgressBar;
+    global int $renderStopped;
+
+    $renderStopped = 0;
+
+
+    if(`dockControl -ex "batRenDocker"`)
+    {
+        deleteUI $batRenColumn;
+    }
+    else
+    {
+        $batRenWindow = `window`;
+        $batRenScroll = `scrollLayout -horizontalScrollBarThickness 16 -verticalScrollBarThickness 16 -cr true`; 
+        $batRenDocker = `dockControl -ret false -area "left" -content $batRenWindow -label "RenderDock" -allowedArea "all" batRenDocker`; 
+    }   
+           
+    $batRenColumn = `columnLayout -parent $batRenScroll -columnAttach "both" 5 -rowSpacing 3 -columnWidth 450 -adj true`; 
+    
+    separator -h 20;
+    text -label "-------- Render Input Directory --------" -align "center";
+    $renderInputPathBtn = `button -label "Set Input Directory" -command "SetInputRenderFolder"`;
+    
+    separator -h 20;
+    text -label "-------- Render Output Directory --------" -align "center";
+    $renderOutputPathBtn = `button -label "Set Output Directory" -command "SetOutputRenderFolder"`;
+    
+    separator -h 20;
+    $settingsFromBox = `checkBox -label "Use Render settings from scene file," -v false`;
+    text -l "Will neglect camKey and resolution when 'ON'" -align "left";
+    
+    separator -h 20;
+    text -l "-------- Camera Keyword --------" -align "center";
+    $camKeyNameField = `textField -tx "anim"`;
+    
+    separator -h 20;
+    $renFormatDropDown = `optionMenu -l "Format : "`;
+    menuItem -label "png";
+    menuItem -label "jpg";// only default layer
+
+    separator -h 20;
+    $renResDropDown = `optionMenu -l "Resolution : "`;
+    menuItem -label "1920 X 1080";  //with antialiasing;
+    menuItem -label "3840 X 2160";
+    
+    separator -h 20;
+
+    $waitTimeDropDown = `optionMenu -l "Scene load time (seconds) : "`;
+    menuItem -label "0";
+    menuItem -label "5";
+    menuItem -label "10";
+    menuItem -label "30";
+    menuItem -label "60";
+    menuItem -label "120";
+    menuItem -label "240";
+    menuItem -label "480";
+    menuItem -label "600";
+    menuItem -label "1200";
+    optionMenu -e -sl 3 $waitTimeDropDown;
+
+    string $changeToRealtimeRender = `button -label "Start Rendering Beauty Pass" -command "StartBeautyBatch" -bgc 0.5 0.9 0`;    
+    text -l "Renders all cameras with 'key' in their name \n & \n Renders each display layer separately ";
+    separator -h 20;
+    
+    text -l "Render log";
+    $renLogScroll = `scrollLayout -horizontalScrollBarThickness 16 -verticalScrollBarThickness 16 -height 300 -cr true -bgc 0.2 0.2 0.2`; 
+    $renLogColumn = `columnLayout -parent $renLogScroll -columnAttach "both" 5 -rowSpacing 3 -columnWidth 450 -adj true`; 
+    button -parent $batRenColumn -label "Clear log" -command "ClearRenderLog"; 
+
+}
+OpenBatchRender();
+
+
+global proc ClearRenderLog()
+{
+    global string $renLogScroll;
+    global string $renLogColumn;
+    
+    deleteUI $renLogColumn;    
+    $renLogColumn = `columnLayout -parent $renLogScroll -columnAttach "both" 5 -rowSpacing 3 -columnWidth 450 -adj true`;  
+}
+
+global proc AddRenderLog(string $msg, int $type)
+{
+    global string $renLogColumn;
+    if($type == 1)
+    {
+        text -l $msg -parent $renLogColumn -align "center" -bgc 0 1 0 -ww true -h 30;
+    }
+    else if($type == -1)
+    {
+        text -l $msg -parent $renLogColumn -align "center" -bgc 1 0 0 -ww true -h 30;
+    }
+    else if($type == 0)
+    {
+        text -l $msg -parent $renLogColumn -align "center" -bgc 1 1 0 -ww true -h 30;
+    }
+}
+
+global proc GetRenderableCams()
+{
+    global string $renCamList[];
+    global string $camKeyNameField;
+    clear $renCamList;
+    int $cnt = 0;
+    string $cam;
+    string $key = `textField -q -tx $camKeyNameField`;
+    $key = tolower($key);
+    for($cam in `ls -cameras`)
+    {
+        string $tmp = tolower($cam);
+        string $check = `match $key $tmp`;
+        if($check != "")
+        {
+            $renCamList[$cnt] = $cam;
+            $cnt++;
+        }
+    }   
+}
+
+global proc SetInputRenderFolder()
+{
+    global string $renderInputPath;
+    global string $renderInputPathBtn;
+    $paths = `fileDialog2 -fm 3 -ds 2 -okc "Set Input Directory"`;
+    $renderInputPath = $paths[0];
+    button -e -l $renderInputPath $renderInputPathBtn;
+}
+
+global proc SetOutputRenderFolder()
+{
+    global string $renderOutputPath;
+    global string $renderOutputPathBtn;
+    $paths = `fileDialog2 -fm 3 -ds 2 -okc "Set Output Directory"`;
+    $renderOutputPath = $paths[0];
+    button -e -l $renderOutputPath $renderOutputPathBtn;
+}
+
+global proc StartBeautyBatch()
+{ 
+    global int $renderStopped;
+    $renderStopped = 0;
+    global string $renderInputPath;
+    $renderFileList = `getFileList -folder $renderInputPath -filespec "*.ma"`; 
+    global int $currentFileIndex;
+    $currentFileIndex = 0;
+    if(size($renderFileList) > 0)
+    {
+        file -f -o ($renderInputPath+"/"+$renderFileList[$currentFileIndex]);
+        string $currentFileName = basenameEx($renderFileList[$currentFileIndex]);
+       
+        evalDeferred -lp ("ReloadTextures " + $currentFileName);
+    }  
+}
+
+global proc int IsStopped()
+{
+    global int $renderStopped;
+    global string $gMainProgressBar;
+    int $result = 0;
+    if($renderStopped == 1)
+    {
+        return 1;
+    }
+    if($gMainProgressBar != "")
+    {
+        if(`progressBar -q -ic $gMainProgressBar`)
+        {
+            $result = 1;
+            $renderStopped = 1;
+            progressBar -edit -endProgress $gMainProgressBar;    
+        }
+    }
+    return $result;
+}
+
+global proc RenderNextFile()
+{
+    if(IsStopped())
+    {
+        return;
+    }
+    global string $renderInputPath;
+    $renderFileList = `getFileList -folder $renderInputPath -filespec "*.ma"`; 
+    global int $currentFileIndex;
+    if($currentFileIndex + 1 < size($renderFileList))
+    {
+        $currentFileIndex++;
+        file -f -o ($renderInputPath+"/"+$renderFileList[$currentFileIndex]);
+        string $currentFileName = basenameEx($renderFileList[$currentFileIndex]);       
+        evalDeferred -lp ("ReloadTextures " + $currentFileName);
+    }
+    else
+    {
+        $window = `window -title "Status" -widthHeight 200 85 -mnb 0 -mxb 0 -tlb 1 `;
+        columnLayout -adjustableColumn true;
+        separator -h 20;
+        text -l "Rendering Completed" -fn "boldLabelFont" -bgc 0.5 1 0.5 -h 30;
+        separator -h 20;
+        showWindow $window;
+    }
+}
+
+global proc ReloadTextures(string $currentFileName)
+{
+    generateAllUvTilePreviews;
+    evalDeferred -lp ("RenderMAFile " + $currentFileName);
+}
+
+
+global proc RenderMAFile(string $currentFileName)
+{ 
+
+    string $renderFormat;
+
+    global string $waitTimeDropDown;
+    string $waitString = `optionMenu -query -value $waitTimeDropDown`;
+    int $waitTime = (int)$waitString;
+
+     $window = `window -title "Status" -widthHeight 200 85 -mnb 0 -mxb 0 -tlb 1 `;
+        columnLayout -adjustableColumn true;
+        separator -h 20;
+        text -l ("Scene is waiting to load for "+$waitTime+"sec") -fn "boldLabelFont" -bgc 1 1 1 -h 30;
+        separator -h 20;
+        showWindow $window;
+
+    pause -sec $waitTime;
+
+    deleteUI $window;
+
+    if(IsStopped())
+    {
+        return;
+    }
+
+    int $renderCheck = 0;
+    $currentFileName = FixForFolderName($currentFileName);
+    global string $renCamList[];
+    global string $settingsFromBox;
+     if(`checkBox -q -v $settingsFromBox`)
+        {
+            $tmp = `getAttr defaultResolution.width`;
+            if($tmp == 1920)
+            {            
+                setAttr "hardwareRenderingGlobals.multiSampleEnable" 1;
+                setAttr "hardwareRenderingGlobals.multiSampleCount" 8;
+            }
+            else
+            {
+                setAttr "hardwareRenderingGlobals.multiSampleEnable" 0;            
+            }
+            setAttr "hardwareRenderingGlobals.lineAAEnable" 0;//Disable smooth wireframe  
+            setAttr "hardwareRenderingGlobals.renderDepthOfField" 0;//Disable depth of field  
+            setAttr "hardwareRenderingGlobals.motionBlurEnable" 0;//Disable motion blur  
+            setAttr "hardwareRenderingGlobals.hwFogEnable" 0;//enable hardwarefog
+            setAttr "hardwareRenderingGlobals.ssaoEnable" 0;//enable screen space ambient occlusion
+            
+            clear $renCamList;
+            int $cnt = 0;
+            for($cam in `ls -cameras`)
+            {
+                if(`getAttr ($cam+".renderable")`)
+                {
+                    $renCamList[$cnt] = $cam;
+                    $cnt++;
+                }
+            }
+        }
+        else
+        {
+            float $minTime = `playbackOptions -q -minTime`;
+            float $maxTime = `playbackOptions -q -maxTime`;    
+            setCurrentRenderer "mayaHardware2";
+            setAttr hardwareRenderingGlobals.renderMode 4 ; //Shaded and Textured
+            setAttr "hardwareRenderingGlobals.lightingMode" 1; //all
+            colorManagementPrefs -edit -ote true;//Apply output transform to renderer
+            setAttr "defaultRenderGlobals.startFrame" $minTime;//Based on start of active timeline
+            setAttr "defaultRenderGlobals.endFrame" $maxTime;//Based on end of active timeline
+            setAttr "defaultRenderGlobals.byFrameStep" 1;
+            global string $renFormatDropDown;
+            $renderFormat = `optionMenu -query -value $renFormatDropDown`;
+            if($renderFormat == "png")
+            {
+                setAttr "defaultRenderGlobals.imageFormat" 32;//PNG
+            }
+            else
+            {  
+                setAttr "defaultRenderGlobals.imageFormat" 8;//jpg      
+            }
+            global string $renResDropDown;
+            string $renderRes = `optionMenu -query -value $renResDropDown`;
+            if($renderRes == "3840 X 2160")
+            {
+                setAttr defaultResolution.width 3840;//Width of render output
+                setAttr defaultResolution.height 2160;//Height of render output
+                setAttr "hardwareRenderingGlobals.multiSampleEnable" 0;
+            }
+            else
+            {
+                setAttr defaultResolution.width 1920;//Width of render output
+                setAttr defaultResolution.height 1080;//Height of render output
+                setAttr "hardwareRenderingGlobals.multiSampleEnable" 1;
+                setAttr "hardwareRenderingGlobals.multiSampleCount" 8;
+        
+            }
+            setAttr defaultRenderGlobals.outFormatControl 0;
+            setAttr defaultRenderGlobals.animation 1;//Enable frame range rendering
+            setAttr defaultRenderGlobals.putFrameBeforeExt 1;//name.#.ext
+            setAttr defaultRenderGlobals.periodInExt 1;//name.#.ext
+            setAttr defaultRenderGlobals.extensionPadding 4;//Extension padding  
+            setAttr "hardwareRenderingGlobals.transparencyAlgorithm" 1;//Transparency algorithm
+            setAttr "hardwareRenderingGlobals.lineAAEnable" 0;//Disable smooth wireframe  
+            setAttr "hardwareRenderingGlobals.renderDepthOfField" 0;//Disable depth of field  
+            setAttr "hardwareRenderingGlobals.motionBlurEnable" 0;//Disable motion blur  
+            setAttr "hardwareRenderingGlobals.hwFogEnable" 0;//enable hardwarefog
+            setAttr "hardwareRenderingGlobals.ssaoEnable" 0;//enable screen space ambient occlusion
+            GetRenderableCams();
+        } 
+   
+        int $c = 0;
+        for($c = 0; $c < size($renCamList); $c++)
+        {
+            StopAllCams();
+            setAttr ($renCamList[$c] + ".renderable") 1;
+            $tmpList = `listRelatives -parent ($renCamList[$c])`;
+            string $currentCamera = $tmpList[0];
+            $currentCamera = FixForFolderName($currentCamera);
+            //render per camera
+            global string $renLayers[];
+            GetRenderLayers();
+            if($renderFormat == "jpg")
+            {
+                clear $renLayers;
+                $renLayers[0] = "defaultLayer";
+            }
+            for($i=0;$i<size($renLayers);$i++)
+            { 
+                    string $currentLayer;
+                    if($renLayers[$i] == "defaultLayer")
+                    {
+                        ShowAllLayers();
+                    }
+                    else
+                    {
+                        HideAllLayers();
+                    }
+                    if(1 != `getAttr ($renLayers[$i]+".visibility")`)
+                    {
+                        layerEditorLayerButtonVisibilityChange $renLayers[$i]; 
+                    }
+                    $currentLayer = $renLayers[$i]; 
+                    $currentLayer = FixForFolderName($currentLayer);
+                    //render per layers
+                    global string $renderOutputPath;
+                    float $minTime = `getAttr "defaultRenderGlobals.startFrame"`;
+                    float $maxTime = `getAttr "defaultRenderGlobals.endFrame"`;    
+                    float $frame;
+
+                    string $tmp = $currentLayer;
+                    $tmp = tolower($tmp);
+                    string $check = `match "_one" $tmp`;
+                    if($check == "_one")
+                    {
+                        $minTime = 1;
+                        $maxTime = 1;
+                    }
+                    if(IsStopped())
+                    {
+                        return;
+                    }
+                    global string $gMainProgressBar;
+                    int $steps = (int)($maxTime - $minTime + 1);
+                    progressBar -edit -beginProgress -isInterruptable true -status "Rendering ..." -maxValue $steps $gMainProgressBar;
+                    for($frame = $minTime; $frame <= ($maxTime+0.1); $frame++)
+                    {
+                        string $renderedImagePath = `ogsRender -f $frame`;
+                        string $moveToPath = ($renderOutputPath + "/" + $currentFileName +"/"+ $currentCamera + "/Beauty/" + $currentLayer + "/" + $currentFileName +"_"+$currentCamera+ "_"+ $currentLayer + "_Beauty."+ PadFrameNumbers($frame,$minTime,$maxTime) + ".jpg");
+                        sysFile -md (dirname($moveToPath));
+                        sysFile -mov $moveToPath $renderedImagePath;
+                        $renderCheck++;
+                        progressBar -edit -step 1 $gMainProgressBar;
+                        if(IsStopped())
+                        {
+                            break;
+                        }
+                    }
+                    progressBar -edit -endProgress $gMainProgressBar;                   
+                    if(IsStopped())
+                    {
+                        return;
+                    }
+            }
+        } 
+    if($renderCheck > 0)
+    {
+        AddRenderLog($currentFileName + " - Rendered",1);
+    }
+    else
+    {
+        AddRenderLog($currentFileName + " - Skipped",-1);
+    }
+    if(IsStopped())
+    {
+        return;
+    }
+    RenderNextFile();
+}
+
+global proc GetRenderLayers()
+{
+    global string $renLayers[];
+    clear $renLayers;
+    int $cnt = 0;
+    string $layers[] = `ls -type  displayLayer`;
+    for($i=0;$i<size($layers);$i++)
+    {   
+        string $layer = $layers[$i];
+        string $tmp = tolower($layer);
+        string $check = `match "default" $tmp`;
+        if($check == "")
+        {
+            $renLayers[$cnt] = $layers[$i];
+            $cnt++;
+        }
+    }
+    if($cnt==0)
+    {
+        $renLayers[$cnt] = "defaultLayer";
+        $cnt++;
+    }
+}
+
+global proc string FixForFolderName(string $name)
+{
+    string $buffer[];
+    clear $buffer;
+    $numTokens = `tokenize $name "<>:\"/\\|?*" $buffer`;
+    return ($buffer[$numTokens-1]);
+}
+
+global proc StopAllCams()
+{
+     for($cam in `ls -cameras`)
+        {
+            setAttr ($cam + ".renderable") 0;
+        }
+}
+global proc HideAllLayers()
+{
+    string $layers[] = `ls -type  displayLayer`;
+    for($i=0;$i<size($layers);$i++)
+    {
+        string $layer = $layers[$i];
+        string $tmp = tolower($layer);
+        string $check = `match "default" $tmp`;
+        if($check == "")
+        {
+            if(0 != `getAttr ($layers[$i]+".visibility")`)
+            {
+                layerEditorLayerButtonVisibilityChange $layers[$i];
+            }
+        }
+    }
+}
+global proc ShowAllLayers()
+{
+    string $layers[] = `ls -type  displayLayer`;
+    for($i=0;$i<size($layers);$i++)
+    {
+        string $layer = $layers[$i];
+        string $tmp = tolower($layer);
+        string $check = `match "default" $tmp`;
+        if($check == "")
+        {
+            if(1 != `getAttr ($layers[$i]+".visibility")`)
+            {
+                layerEditorLayerButtonVisibilityChange $layers[$i];
+            }
+        }
+    }
+}
+global proc string PadFrameNumbers(int $number, int $startNumber, int $finalNumber){
+    // Format $number to the right amount of digits
+    // Add the right amount of zeros to match max(abs($finalNumber), abs($startNumber)) number of digits
+    // If the $startNumber is negative, add a minus if $number is negative and a zero
+    // if $number is positive.
+    int $numOfDigits = 0;
+    int $maxNumOfDigits = 0;
+    if($number != 0){
+        $numOfDigits = log10(abs($number));
+    }
+    if($finalNumber != 0 || $startNumber < $finalNumber){
+        $maxNumOfDigits = log10(max(abs($finalNumber), abs($startNumber)));
+    }
+    string $res = "";
+    for($i=0; $i < $maxNumOfDigits - $numOfDigits; $i++){
+        $res += "0";
+    }
+    // Handle negatives frames
+    if($startNumber < 0){
+        if($number < 0){
+            $res = "-" + $res;
+        } else {
+            $res += "0";
+        }
+    }
+    return $res+abs($number);
+}

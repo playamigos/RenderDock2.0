@@ -1,0 +1,44 @@
+global string $gShelfTopLevel;
+string $currentShelf = `tabLayout -query -selectTab $gShelfTopLevel`;
+setParent $currentShelf;
+string $asInstallScriptLocation=`asInstallScriptLocation`;
+if (`gmatch $asInstallScriptLocation "*\*"`)
+	$asInstallScriptLocation=`substituteAllString $asInstallScriptLocation "\\" "/"`;
+	
+string $iconExt="png";
+shelfButton
+	-command ("source \""+$asInstallScriptLocation+"Scripts/RenderDock.mel\";")
+	-annotation "RenderDock"
+	-label "RenderDock"
+	-image ($asInstallScriptLocation+"Icons/Render."+$iconExt)
+	-image1 ($asInstallScriptLocation+"Icons/Render."+$iconExt)
+	-sourceType "mel"
+;
+shelfButton
+	-command ("source \""+$asInstallScriptLocation+"Scripts/BatchRenderFixed.mel\";")
+	-annotation "RenderDockFixed"
+	-label "RenderDockFixed"
+	-image ($asInstallScriptLocation+"Icons/batchRenderFixed."+$iconExt)
+	-image1 ($asInstallScriptLocation+"Icons/batchRenderFixed."+$iconExt)
+	-sourceType "mel"
+;
+
+//--installTemplate resume--//
+print ("\n// "+"vGear"+" has been added to current shelf.\n");
+
+global proc asInstallScriptLocator (){}
+
+global proc string asInstallScriptLocation ()
+{
+string $whatIs=`whatIs asInstallScriptLocator`;
+string $fullPath=`substring $whatIs 25 999`;
+string $buffer[];
+string $slash="/";
+if (`gmatch $whatIs "*\\\\*"`)//sourced from ScriptEditor
+	$slash="\\";
+int $numTok=`tokenize $fullPath $slash $buffer`;
+int $numLetters=size($fullPath);
+int $numLettersLastFolder=size($buffer[$numTok-1]);
+string $scriptLocation=`substring $fullPath 1 ($numLetters-$numLettersLastFolder)`;
+return $scriptLocation;
+}

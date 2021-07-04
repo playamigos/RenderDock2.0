@@ -1,0 +1,7 @@
+1) copy RenderDock folder to document/maya/scripts
+2) Open maya and select the shelf u want to add the script to
+3) Drag the install.mel file into maya
+4) Scripts will be added to the active shelf
+5) Done :)
+
+includes srcipt for Rendering passes
